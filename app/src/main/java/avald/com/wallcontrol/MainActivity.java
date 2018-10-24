@@ -20,6 +20,7 @@ import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
@@ -28,13 +29,25 @@ import android.widget.RelativeLayout;
 import android.widget.TableLayout;
 import android.widget.TableRow;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.github.douglasjunior.bluetoothclassiclibrary.BluetoothService;
+import com.github.douglasjunior.bluetoothclassiclibrary.BluetoothStatus;
 import com.skydoves.colorpickerview.ColorEnvelope;
 import com.skydoves.colorpickerview.ColorPickerView;
 import com.skydoves.colorpickerview.listeners.ColorEnvelopeListener;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.Random;
 
 public class MainActivity extends AppCompatActivity {
@@ -45,6 +58,10 @@ public class MainActivity extends AppCompatActivity {
     static ColorPickerView colorPickerView;
     static TableLayout grid;
     static Button bt_connect;
+    static Button save;
+    static Button load;
+    static Button clear;
+
 
     static Button[] buttons = new Button[96];
 
@@ -60,11 +77,19 @@ public class MainActivity extends AppCompatActivity {
 
     final Handler handler = new Handler();
 
+    final String filename = "routes.txt";
+    File path;
+    File file;
+
+    ArrayList<Led> led_on = new ArrayList<Led>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        path = getApplicationContext().getFilesDir();
+        file = new File(path, filename);
 
         bleManager = new BLEManager(getApplicationContext());
 
@@ -102,6 +127,8 @@ public class MainActivity extends AppCompatActivity {
                               @Override
                               public void run() {
                                   bleManager.stopScan();
+                                  if(bleManager.service.getStatus().equals(BluetoothStatus.NONE))
+                                    conn_stat.setText("Disconnected");
                               }
                           }, 10000);
                       }else{
@@ -117,10 +144,14 @@ public class MainActivity extends AppCompatActivity {
             TableRow tr = new TableRow(this);
             for (int j = 0; j < 8; j++) {
                 final int index = 95 - i*8 - j;
+                int pos = index;
+                if(i%2 == 0){
+                    pos = 95 - i*8 - (7 - j);
+                }
 
-                matrix.add(new Led(i, j, hexColor));
+                matrix.add(new Led(i, j, hexColor, pos, index));
                 buttons[index] = new Button(this);
-                buttons[index].setText(matrix.get(95 - index).getPosition());
+                buttons[index].setText(matrix.get(95 - index).Pos+"");
                 buttons[index].setMinimumWidth(20);
                 buttons[index].setWidth(getScreenWidth()/8);
                 buttons[index].setMinimumHeight(20);
@@ -135,7 +166,8 @@ public class MainActivity extends AppCompatActivity {
                 buttons[index].setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
-                        Led tile = matrix.get(index);
+                        Led tile = matrix.get(95 - index);
+                        //Toast.makeText(getApplicationContext(), "pos: "+tile.Pos + "index: "+(95-index), Toast.LENGTH_LONG).show();
                         if (Color != tile.getColor()) {
                             tile.setColor(Color);
                             tile.setHex(hexColor);
@@ -145,8 +177,11 @@ public class MainActivity extends AppCompatActivity {
                                     PorterDuffColorFilter(Color,PorterDuff.Mode.MULTIPLY));
                             buttons[index].setBackground(mDrawable);
 
-                            bleManager.write(index, tile.hex);
+                            led_on.add(tile);
+
+                            bleManager.write(tile.Pos, tile.getHex());
                         }else{
+                            led_on.remove(tile);
                             tile.setColor(0);
                             tile.setHex("FF000000");
 
@@ -155,7 +190,7 @@ public class MainActivity extends AppCompatActivity {
                                     PorterDuffColorFilter(android.graphics.Color.parseColor("#aaaaaa"),PorterDuff.Mode.MULTIPLY));
                             buttons[index].setBackground(mDrawable);
 
-                            bleManager.write(index, tile.hex);
+                            bleManager.write(tile.Pos, tile.getHex());
 
                         }
                     }
@@ -166,9 +201,105 @@ public class MainActivity extends AppCompatActivity {
             grid.addView(tr);
         } // for
 
+        save = (Button) findViewById(R.id.save);
+
+        save.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String save = "";
+
+                for (Led led: led_on) {
+                    save+= led.index +";"+led.hex+"|";
+                }
+                save = save.substring(0, save.length()-1);
+                //Toast.makeText(getApplicationContext(), save, Toast.LENGTH_LONG).show();
+                try {
+                    writeToFile(save);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        load = (Button) findViewById(R.id.load);
+
+        load.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                try {
+                    String leds_on = readFromFile();
+                    System.out.println(leds_on);
+                    Led tile;
+                    String led_array[] = leds_on.split("\\|");
+
+                    reset();
+
+                    for(int i = 0; i < led_array.length; i++){
+                        String info[] = led_array[i].split(";");
+                        //System.out.println("info "+led_array[i]);
+                        //System.out.println("index: " +info[0]+ " color: " +info[1].substring(2));
+
+                        tile = matrix.get(95-Integer.parseInt(info[0]));
+                        tile.setHex(info[1]);
+                        tile.setColor(android.graphics.Color.parseColor("#"+info[1].substring(2)));
+
+                        led_on.add(tile);
+                        Drawable mDrawable = getApplicationContext().getResources().getDrawable(R.drawable.circle_button);
+                        mDrawable.setColorFilter(new
+                                PorterDuffColorFilter(tile.getColor(),PorterDuff.Mode.MULTIPLY));
+                        buttons[tile.index].setBackground(mDrawable);
+                        //turn leds on
+                        //System.out.println(tile.Pos);
+
+                    }
+
+                    bleManager.write(getLedString());
+
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        clear = (Button) findViewById(R.id.reset);
+        clear.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                reset();
+                bleManager.reset();
+            }
+        });
+
         checkBtEnabled();
         checkLocationPermission();
 
+    }
+
+    public String getLedString(){
+        String led = "";
+        for(Led tile: led_on){
+            led+=tile.Pos+";#"+tile.getHex().substring(2)+"|";
+        }
+        if(led != "")
+            return led.substring(0,led.length()-1);
+        else
+            return led;
+    }
+
+    public void reset(){
+        for(Iterator<Led>  it = led_on.iterator(); it.hasNext();){
+            Led LED = it.next();
+            it.remove();
+            LED.setColor(android.graphics.Color.parseColor("#AAAAAA"));
+            LED.setHex("FF000000");
+
+            Drawable mDrawable = getApplicationContext().getResources().getDrawable(R.drawable.circle_button);
+            mDrawable.setColorFilter(new
+                    PorterDuffColorFilter(LED.getColor(),PorterDuff.Mode.MULTIPLY));
+            buttons[LED.index].setBackground(mDrawable);
+
+        }
     }
 
     public void checkBtEnabled(){
@@ -191,6 +322,40 @@ public class MainActivity extends AppCompatActivity {
      */
     public static int getScreenHeight() {
         return Resources.getSystem().getDisplayMetrics().heightPixels;
+    }
+
+    private void writeToFile(String data) throws IOException {
+        FileOutputStream stream = null;
+        try {
+            stream = new FileOutputStream(file);
+            stream.write(data.getBytes());
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            stream.close();
+        }
+    }
+
+    private String readFromFile() throws IOException {
+
+        String ret = "";
+        int length = (int) file.length();
+
+        byte[] bytes = new byte[length];
+
+        FileInputStream in = new FileInputStream(file);
+        try {
+            in.read(bytes);
+            ret = new String(bytes);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            in.close();
+        }
+        Toast.makeText(getApplicationContext(), ret, Toast.LENGTH_LONG).show();
+        return ret;
     }
 
     public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;

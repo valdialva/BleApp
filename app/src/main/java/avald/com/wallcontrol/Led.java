@@ -9,13 +9,17 @@ public class Led {
     int PosY;
     String position;
     String hex;
+    int Pos;
+    int index;
     int color = android.graphics.Color.parseColor("#aaaaaa");
 
-    Led(int PosX, int PosY, String hex){
+    Led(int PosX, int PosY, String hex, int pos, int index){
         this.PosX = PosX;
         this.PosY = PosY;
         setPosition(PosX + "-" + PosY);
         this.hex = hex;
+        this.Pos = pos;
+        this.index = index;
     }
 
     public int getPosX() {

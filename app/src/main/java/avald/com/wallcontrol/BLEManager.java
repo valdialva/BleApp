@@ -38,13 +38,16 @@ public class BLEManager {
             @Override
             public void onDeviceDiscovered(BluetoothDevice device, int rssi) {
                 //System.out.println(mDevice);
-                if(mDevice == null && device.getName().equals("MoonBoard")){
-                    mDevice = device;
-                    System.out.println("FOUND D");
+                String name = device.getName();
+                if(name != null) {
+                    if (mDevice == null && device.getName().equals("MoonBoard")) {
+                        mDevice = device;
+                        System.out.println("FOUND D");
 
-                    service.connect(mDevice);
+                        service.connect(mDevice);
 
-                    stopScan();
+                        stopScan();
+                    }
                 }
 
             }
@@ -58,13 +61,7 @@ public class BLEManager {
 
             @Override
             public void onStopScan() {
-
                 System.out.println("END");
-                if(mDevice == null)
-                    MainActivity.conn_stat.setText("Disconnected");
-                else{
-                    MainActivity.conn_stat.setText("Connected");
-                }
             }
         });
 
@@ -76,11 +73,13 @@ public class BLEManager {
             @Override
             public void onStatusChange(BluetoothStatus status) {
                 System.out.println("status " + status);
-                if(status.equals(BluetoothStatus.CONNECTED))
+                if(status.equals(BluetoothStatus.CONNECTED)) {
                     MainActivity.conn_stat.setText("Connected");
-                else if(status.equals(BluetoothStatus.NONE)) {
+                    MainActivity.bt_connect.setText("DISCONNECT");
+                }else if(status.equals(BluetoothStatus.NONE)) {
                     mDevice = null;
                     MainActivity.conn_stat.setText("Disconnected");
+                    MainActivity.bt_connect.setText("CONNECT");
                 }
             }
 
@@ -113,7 +112,15 @@ public class BLEManager {
     }
 
     public void write(int pos, String hex){
-        writer.write(pos + ";#" + hex.substring(2));
+        writer.write(pos + ";#" + hex.substring(2)+"fin++");
+    }
+
+    public void write(String leds){
+        writer.write(leds + "fin++");
+    }
+
+    public void reset(){
+        writer.write("fin++");
     }
 
 }
